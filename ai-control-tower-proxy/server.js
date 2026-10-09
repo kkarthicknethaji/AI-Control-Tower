@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const swaggerJsdoc = require('swagger-jsdoc');
+const { parsePublicBaseUrl, resolveServers } = require('./openapi/servers');
 const { createClient } = require('@supabase/supabase-js');
 const { createAuthMiddleware } = require('./middleware/requireAuth');
 const { createCompanyAdminMiddleware } = require('./middleware/requireCompanyAdmin');
@@ -20,12 +21,23 @@ const tracePayloadsRouter = require('./routes/v1/tracePayloads');
 const app = express();
 const port = Number(process.env.PORT || 3001);
 const supabaseUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Data-plane client target: defaults to SUPABASE_URL (personal repo, unchanged
+// behavior). The enterprise deploy overrides this to a self-hosted PostgREST
+// instance in front of the Azure control-tower DB, while SUPABASE_URL stays
+// pointed at the real Supabase project so requireAuth's JWKS lookup below is
+// unaffected — user auth stays on Supabase Auth regardless of data backend.
+const dataApiUrl = String(process.env.CT_DATA_API_URL || supabaseUrl || '').replace(/\/+$/, '');
+const serviceRoleKey = process.env.CT_DATA_API_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const allowedOrigins = (process.env.ALLOWED_ORIGIN || 'http://127.0.0.1:5174,http://localhost:5174').split(',').map((origin) => origin.trim()).filter(Boolean);
 const apiReferenceUrl = String(process.env.CT_API_REFERENCE_URL || '').trim();
-const supabaseAdmin = supabaseUrl && serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey) : null;
+const supabaseAdmin = dataApiUrl && serviceRoleKey ? createClient(dataApiUrl, serviceRoleKey) : null;
 const RATE_LIMIT_MAX = 100; // requests per window per IP, matches the ported /v1 ingestion contract
 const RATE_LIMIT_WINDOW_MIN = 1;
+
+// Hosted behind a reverse proxy (Render, etc.) that sets X-Forwarded-For.
+// Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and all callers share the proxy's IP. Trust exactly one hop.
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 1));
 
 app.use(cors({ origin: allowedOrigins, credentials: false }));
 app.get('/', (req, res) => res.json({ status: 'ok', service: 'ai-control-tower-proxy' }));
@@ -92,7 +104,24 @@ const openApiSpec = swaggerJsdoc({
   // resolve Windows backslash paths from path.join() on Windows hosts.
   apis: [__dirname.replace(/\\/g, '/') + '/routes/**/*.js']
 });
-app.get('/docs/openapi.json', (req, res) => res.json(openApiSpec));
+// `servers` is resolved per request so sample URLs always point at the host
+// serving the docs (local, Render, or any future host) — see openapi/servers.js.
+// Requires `trust proxy` for correct https/host behind a reverse proxy. Set
+// PUBLIC_BASE_URL (full URL incl. https://) to pin it, e.g. when a gateway
+// rewrites the Host header. Recommended in production, since Host is
+// otherwise client-controlled.
+const publicBaseUrl = parsePublicBaseUrl(process.env.PUBLIC_BASE_URL);
+if (process.env.PUBLIC_BASE_URL && !publicBaseUrl) {
+  console.warn('[CONTROL TOWER] PUBLIC_BASE_URL is invalid (must be http(s)://host[:port]); ignoring it.');
+}
+app.get('/docs/openapi.json', (req, res) => {
+  // Response depends on the request host, so it must not be shared-cached.
+  res.set('Cache-Control', 'no-store');
+  res.vary('Host');
+  res.vary('X-Forwarded-Host');
+  res.vary('X-Forwarded-Proto');
+  res.json({ ...openApiSpec, servers: resolveServers(req, { publicBaseUrl, fallbackPort: port }) });
+});
 // Deliberately app.use (not app.get) — bare /docs vs /docs/ must be
 // distinguishable so the redirect below can't loop on itself (Express's
 // default non-strict routing treats them as the same route under app.get).
@@ -105,6 +134,7 @@ app.use('/docs', express.static(path.join(__dirname, 'openapi'), { index: 'docs.
 app.use((req, res) => res.status(404).json({ error: { type: 'not_found', message: `Route not found: ${req.method} ${req.path}` } }));
 
 if (!supabaseUrl) console.warn('[CONTROL TOWER] SUPABASE_URL is not set.');
-if (!serviceRoleKey) console.warn('[CONTROL TOWER] SUPABASE_SERVICE_ROLE_KEY is not set. Settings data routes will be unavailable.');
+if (!dataApiUrl) console.warn('[CONTROL TOWER] CT_DATA_API_URL/SUPABASE_URL is not set.');
+if (!serviceRoleKey) console.warn('[CONTROL TOWER] CT_DATA_API_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY is not set. Settings data routes will be unavailable.');
 if (!apiReferenceUrl) console.warn('[CONTROL TOWER] CT_API_REFERENCE_URL is not set.');
 app.listen(port, () => console.log(`[CONTROL TOWER] Proxy listening on http://127.0.0.1:${port}`));

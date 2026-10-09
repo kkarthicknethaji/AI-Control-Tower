@@ -17,6 +17,7 @@ $env:ALLOWED_ORIGIN = "http://127.0.0.1:5174"
 $env:SUPABASE_URL = "https://your-project.supabase.co"
 $env:SUPABASE_SERVICE_ROLE_KEY = Read-Host "Enter pgt-dev service role key"
 $env:CT_API_REFERENCE_URL = "http://127.0.0.1:3001/docs/" # this proxy's OWN /docs route now serves it (see "API docs" below) — no longer coincidentally dependent on whichever proxy happens to run on 3001
+# Optional: $env:PUBLIC_BASE_URL = "https://your-proxy-host"  # pins the server URL shown in /docs (default: derived from the request host; set it in production, or if a gateway rewrites Host)
 npm run dev
 ```
 

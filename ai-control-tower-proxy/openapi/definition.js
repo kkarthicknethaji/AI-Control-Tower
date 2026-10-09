@@ -65,11 +65,8 @@ curl -X POST https://<this-proxy-host>/v1/usage-events \\
   apps, credentials, and capture config. Not for external integrators.
 `
   },
-  servers: [
-    { url: 'http://127.0.0.1:3001', description: 'Local development (this proxy)' }
-    // Add the deployed ai-control-tower-proxy host here once it exists —
-    // no production URL yet.
-  ],
+  // `servers` is intentionally omitted — server.js injects it per request
+  // from the serving host (or PUBLIC_BASE_URL) in the /docs/openapi.json handler.
   security: [{ bearerAuth: [] }],
   tags: [
     { name: 'usage-events', description: 'Record and read back AI usage/spend events.' },

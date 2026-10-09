@@ -41,6 +41,13 @@ Ingestion API, see `ai-control-tower-proxy/AGENTS.md`).
 - Keep API keys, provider secrets, database secrets, and service-role credentials out of browser bundles and committed code.
 - Add focused validation and tests for meaningful behavior changes.
 
+## Versioning
+
+`ai-control-tower-react` and `ai-control-tower-proxy` share ONE version (currently
+`0.2.0`). Any release-worthy change bumps `version` in both `package.json`
+files (and the matching `package-lock.json` root entries) together, so they
+stay in sync.
+
 ## Target navigation (ai-control-tower-react)
 
 Left side navigation, not top tabs: Command Center, Outcome Economics, Cost Analytics, Trace Explorer, Governance.
