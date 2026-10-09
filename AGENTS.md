@@ -43,10 +43,12 @@ Ingestion API, see `ai-control-tower-proxy/AGENTS.md`).
 
 ## Versioning
 
-`ai-control-tower-react` and `ai-control-tower-proxy` share ONE version (currently
-`0.2.0`). Any release-worthy change bumps `version` in both `package.json`
-files (and the matching `package-lock.json` root entries) together, so they
-stay in sync.
+The app version lives in ONE place: `"version"` in
+`ai-control-tower-react/package.json`. The sidebar reads it at build time via
+`ai-control-tower-react/src/lib/appMeta.ts` — do not hard-code it there. To
+release, bump that one field (and the matching `package-lock.json` root
+entries). `ai-control-tower-proxy` deliberately has no version; its OpenAPI
+`info.version` (`openapi/definition.js`) is the separate API contract version.
 
 ## Target navigation (ai-control-tower-react)
 
